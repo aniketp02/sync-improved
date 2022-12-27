@@ -17,6 +17,8 @@ from glob import glob
 import os, random, cv2, argparse
 from hparams import hparams, get_image_list
 
+import wandb
+
 parser = argparse.ArgumentParser(description='Code to train the Wav2Lip model without the visual quality discriminator')
 
 parser.add_argument("--data_root", help="Root folder of the preprocessed LRS2 dataset", required=True, type=str)
@@ -34,8 +36,25 @@ global_epoch = 0
 use_cuda = torch.cuda.is_available()
 print('use_cuda: {}'.format(use_cuda))
 
-syncnet_T = 5
+syncnet_T = 10
 syncnet_mel_step_size = 16
+
+#initializing the wandb logs
+wandb.init(
+    # Set the project where this run will be logged
+    project="wav2lip-sync-improved",
+    # Track hyperparameters and run metadata
+    config={
+    "batch_size": hparams.batch_size,
+    "learning_rate": hparams.initial_learning_rate,
+    "syncnet_wt": hparams.syncnet_wt,
+    "disc_wt": hparams.disc_wt,
+    "disc_initial_learning_rate": hparams.disc_initial_learning_rate,
+    "checkpoint_interval": hparams.checkpoint_interval,
+    "eval_interval": hparams.eval_interval,
+    "architecture": "vanilla + 10 ref frames",
+    "dataset": "lrs2",
+})
 
 class Dataset(object):
     def __init__(self, split):
@@ -85,7 +104,7 @@ class Dataset(object):
 
     def get_segmented_mels(self, spec, start_frame):
         mels = []
-        assert syncnet_T == 5
+        assert syncnet_T == 10
         start_frame_num = self.get_frame_id(start_frame) + 1 # 0-indexing ---> 1-indexing
         if start_frame_num - 2 < 0: return None
         for i in range(start_frame_num, start_frame_num + syncnet_T):
@@ -175,6 +194,8 @@ def save_sample_images(x, g, gt, global_step, checkpoint_dir):
     for batch_idx, c in enumerate(collage):
         for t in range(len(c)):
             cv2.imwrite('{}/{}_{}.jpg'.format(folder, batch_idx, t), c[t])
+            wandb_img = wandb.Image('{}/{}_{}.jpg'.format(folder, batch_idx, t), caption="{}_{}".format(batch_idx, t))
+            wandb.log({"{}".format(folder): wandb_img})
 
 logloss = nn.BCELoss()
 def cosine_loss(a, v, y):
@@ -255,6 +276,7 @@ def train(device, model, train_data_loader, test_data_loader, optimizer,
 
             prog_bar.set_description('L1: {}, Sync Loss: {}'.format(running_l1_loss / (step + 1),
                                                                     running_sync_loss / (step + 1)))
+            wandb.log({"Train L1": running_l1_loss / (step + 1), "Train Sync": running_sync_loss / (step + 1)})
 
         global_epoch += 1
         
@@ -288,6 +310,7 @@ def eval_model(test_data_loader, global_step, device, model, checkpoint_dir):
                 averaged_recon_loss = sum(recon_losses) / len(recon_losses)
 
                 print('L1: {}, Sync loss: {}'.format(averaged_recon_loss, averaged_sync_loss))
+                wandb.log({"Eval L1": averaged_l1_loss, "Eval Sync": averaged_sync_loss})
 
                 return averaged_sync_loss
 
@@ -372,3 +395,5 @@ if __name__ == "__main__":
               checkpoint_dir=checkpoint_dir,
               checkpoint_interval=hparams.checkpoint_interval,
               nepochs=hparams.nepochs)
+
+wandb.finish()

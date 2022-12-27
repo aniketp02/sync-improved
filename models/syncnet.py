@@ -9,7 +9,7 @@ class SyncNet_color(nn.Module):
         super(SyncNet_color, self).__init__()
 
         self.face_encoder = nn.Sequential(
-            Conv2d(15, 32, kernel_size=(7, 7), stride=1, padding=3),
+            Conv2d(30, 32, kernel_size=(7, 7), stride=1, padding=3),
 
             Conv2d(32, 64, kernel_size=5, stride=(1, 2), padding=1),
             Conv2d(64, 64, kernel_size=3, stride=1, padding=1, residual=True),
@@ -64,3 +64,15 @@ class SyncNet_color(nn.Module):
 
 
         return audio_embedding, face_embedding
+
+# ''' Testing Syncnet file for face_embedding'''
+# sync_nxt = SyncNet_color()
+# mel = torch.rand(8, 1, 80, 16)
+# audio_sequences = torch.rand(5, 1, 80, 16)#indiv_mels
+# g = torch.rand(8, 30, 48, 96) #x
+
+# print(mel.shape)
+# print(g.shape)
+# a, v = sync_nxt(mel, g)
+# print(a.shape)
+# print(v.shape) #only for face_embedding [1, 4608]
